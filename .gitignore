@@ -55,3 +55,5 @@ dkms.conf
 **/obj/*
 **/bin/*
 **/app/*
+src/Properties/launchSettings.json
+**/.vs/*
