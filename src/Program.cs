@@ -17,7 +17,7 @@ namespace AuthenticatedOtelLogger
                 ?? "unknown";
 
             string tenant_id = Environment.GetEnvironmentVariable(RuntimeEnvVars.TenantIdEnvVarName)
-                ?? throw new Exception("unknown");
+                ?? "unknown";
 
             AuthorizationEnvironmentOptions authorizationEnvironment;
             if (
