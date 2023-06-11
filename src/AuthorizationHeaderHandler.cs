@@ -70,6 +70,12 @@ namespace AuthenticatedOtelLogger
                 Console.WriteLine("Refreshing Azure AD token...");
                 _authenticationResult = GetAuthenticationResultAsync(_options).Result;
             }
+            if (_authenticationResult == null)
+            {
+                Console.WriteLine("Running in NoAuth mode.");
+                Console.WriteLine("================================================");
+                return "NoAuth";
+            }
             Console.WriteLine(
                 $"Token expires in [HH:MM:SS] {_authenticationResult?.ExpiresOn - DateTimeOffset.UtcNow}."
             );
@@ -154,6 +160,11 @@ namespace AuthenticatedOtelLogger
                         .ExecuteAsync()
                         .ConfigureAwait(false);
 
+                    break;
+
+                case AuthorizationEnvironmentOptions.NoAuth:
+
+                    authenticationResult = null;
                     break;
 
                 default:

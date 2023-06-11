@@ -95,7 +95,7 @@ namespace AuthenticatedOtelLogger
                 while (true)
                 {
                     logger.LogInformation(
-                        $"[Flavor: {demo_flavor} | Tenant: {tenant_id} | Hostname: {authorizationEnvironment}] [Hostname: {Environment.MachineName} | Logging endpoint: {otel_endpoint}] Counter: {++id}"
+                        $"[Flavor: {demo_flavor} | Tenant: {tenant_id} | Authorization: {authorizationEnvironment}] [Hostname: {Environment.MachineName} | Logging endpoint: {otel_endpoint}] Counter: {++id}"
                     );
                     await Task.Delay(1000);
                 }
