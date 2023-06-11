@@ -99,8 +99,8 @@ namespace AuthenticatedOtelLogger
                 RuntimeEnvVars.ClientSecretEnvVarName
             );
             var tenantId = Environment.GetEnvironmentVariable(RuntimeEnvVars.TenantIdEnvVarName);
-            var uamiResourceId = Environment.GetEnvironmentVariable(
-                RuntimeEnvVars.UamiResourceIdEnvVarName
+            var uamiClientId = Environment.GetEnvironmentVariable(
+                RuntimeEnvVars.UamiClientIdEnvVarName
             );
 
             IConfidentialClientApplication confidentialClientApplication;
@@ -133,7 +133,11 @@ namespace AuthenticatedOtelLogger
 
                 case AuthorizationEnvironmentOptions.SystemAssignedIdentity:
 
-                    managedIdApplication = ManagedIdentityApplicationBuilder.Create().Build();
+                    managedIdApplication = ManagedIdentityApplicationBuilder
+                        .Create()
+                        // Azure Container Apps does not work without this
+                        .WithExperimentalFeatures()
+                        .Build();
 
                     authenticationResult = await managedIdApplication
                         .AcquireTokenForManagedIdentity(scope)
@@ -175,13 +179,15 @@ namespace AuthenticatedOtelLogger
 
                 case AuthorizationEnvironmentOptions.UserAssignedIdentity:
 
-                    if (uamiResourceId == null)
+                    if (uamiClientId == null)
                         throw new ArgumentNullException(
-                            $"Environment variable {RuntimeEnvVars.UamiResourceIdEnvVarName} is null."
+                            $"Environment variable {RuntimeEnvVars.UamiClientIdEnvVarName} is null."
                         );
 
                     managedIdApplication = ManagedIdentityApplicationBuilder
-                        .Create(uamiResourceId)
+                        .Create(uamiClientId)
+                        // Azure Container Apps does not work without this
+                        .WithExperimentalFeatures()
                         .Build();
 
                     authenticationResult = await managedIdApplication

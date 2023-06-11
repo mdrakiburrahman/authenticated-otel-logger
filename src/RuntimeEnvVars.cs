@@ -11,6 +11,6 @@ namespace AuthenticatedOtelLogger
         public const string DemoFlavor = "DEMO_FLAVOR";
         public const string OtelFqdnEnvVarName = "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT";
         public const string TenantIdEnvVarName = "TENANT_ID";
-        public const string UamiResourceIdEnvVarName = "UAMI_RESOURCE_ID";
+        public const string UamiClientIdEnvVarName = "UAMI_CLIENT_ID";
     }
 }
