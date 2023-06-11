@@ -7,7 +7,7 @@ namespace AuthenticatedOtelLogger
         public AuthorizationHeaderHandler(
             HttpMessageHandler innerHandler,
             AuthorizationEnvironmentOptions options =
-                AuthorizationEnvironmentOptions.LocalDevMachine
+                AuthorizationEnvironmentOptions.ServicePrincipal
         )
             : base(innerHandler)
         {

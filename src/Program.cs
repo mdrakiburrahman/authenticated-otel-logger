@@ -21,7 +21,7 @@ namespace AuthenticatedOtelLogger
                 )
             )
             {
-                authorizationEnvironment = AuthorizationEnvironmentOptions.LocalDevMachine;
+                authorizationEnvironment = AuthorizationEnvironmentOptions.ServicePrincipal;
             }
 
             using var loggerFactory = LoggerFactory.Create(builder =>
