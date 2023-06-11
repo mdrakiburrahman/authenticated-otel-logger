@@ -3,6 +3,7 @@ using OpenTelemetry;
 using OpenTelemetry.Exporter;
 using OpenTelemetry.Logs;
 
+
 namespace AuthenticatedOtelLogger
 {
     public class Program

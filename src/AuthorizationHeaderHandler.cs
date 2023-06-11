@@ -1,6 +1,4 @@
 using Microsoft.Identity.Client;
-using Microsoft.Identity.Client.AppConfig;
-using Microsoft.Identity.Web;
 using System.Net.Http.Headers;
 
 namespace AuthenticatedOtelLogger
@@ -139,6 +137,37 @@ namespace AuthenticatedOtelLogger
 
                     authenticationResult = await managedIdApplication
                         .AcquireTokenForManagedIdentity(scope)
+                        .ExecuteAsync()
+                        .ConfigureAwait(false);
+
+                    break;
+
+                case AuthorizationEnvironmentOptions.SystemAssignedIdentityWithCertificate:
+
+                    // ============== This is pretty much hard coded for Arc Kubernetes' implementation =================
+                    var arcK8scertObj = Environment.GetEnvironmentVariable(
+                        RuntimeEnvVars.ArcK8sCertEnvVarName
+                    );
+                    var arcK8sclientId = Environment.GetEnvironmentVariable(
+                        RuntimeEnvVars.ArcK8sClientIdEnvVarName
+                    );
+
+                    if (arcK8scertObj == null || arcK8sclientId == null)
+                        throw new ArgumentNullException(
+                            $"Environment variable {RuntimeEnvVars.ArcK8sCertEnvVarName} or {RuntimeEnvVars.ArcK8sClientIdEnvVarName} cannot be null in {AuthorizationEnvironmentOptions.SystemAssignedIdentityWithCertificate}."
+                        );
+
+                    var (Certificate, _) = CertificateUtility.ExtractCert(arcK8scertObj);
+                    // ==================================================================================================
+
+                    confidentialClientApplication = ConfidentialClientApplicationBuilder
+                        .Create(arcK8sclientId)
+                        .WithCertificate(Certificate)
+                        .WithAuthority($"https://login.microsoftonline.com/{tenantId}", true)
+                        .Build();
+
+                    authenticationResult = await confidentialClientApplication
+                        .AcquireTokenForClient(new string[] { $"{scope}/.default" })
                         .ExecuteAsync()
                         .ConfigureAwait(false);
 

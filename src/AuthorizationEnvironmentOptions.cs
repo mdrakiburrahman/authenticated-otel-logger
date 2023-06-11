@@ -5,6 +5,7 @@ namespace AuthenticatedOtelLogger
         NoAuth,
         ServicePrincipal,
         SystemAssignedIdentity,
+        SystemAssignedIdentityWithCertificate,
         UserAssignedIdentity
     }
 }
