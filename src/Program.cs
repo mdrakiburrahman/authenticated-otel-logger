@@ -5,18 +5,26 @@ using OpenTelemetry.Logs;
 
 namespace AuthenticatedOtelLogger
 {
-    class Program
+    public class Program
     {
-        static async Task Main(string[] args)
+        public static async Task Main(string[] args)
         {
             string otel_endpoint =
-                Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT")
+                Environment.GetEnvironmentVariable(RuntimeEnvVars.OtelFqdnEnvVarName)
                 ?? "http://localhost";
+            
+            string demo_flavor = Environment.GetEnvironmentVariable(RuntimeEnvVars.DemoFlavor)
+                ?? "unknown";
+
+            string tenant_id = Environment.GetEnvironmentVariable(RuntimeEnvVars.TenantIdEnvVarName)
+                ?? throw new Exception("unknown");
 
             AuthorizationEnvironmentOptions authorizationEnvironment;
             if (
                 !Enum.TryParse(
-                    Environment.GetEnvironmentVariable("AUTHORIZATION_ENV"),
+                    Environment.GetEnvironmentVariable(
+                        RuntimeEnvVars.AuthorizationEnvironmentEnvVarName
+                    ),
                     out authorizationEnvironment
                 )
             )
@@ -87,7 +95,7 @@ namespace AuthenticatedOtelLogger
                 while (true)
                 {
                     logger.LogInformation(
-                        $"[With Foo] [Hostname: {Environment.MachineName} | Logging endpoint: {otel_endpoint}] Counter: {++id}"
+                        $"[Flavor: {demo_flavor} | Tenant: {tenant_id} | Hostname: {authorizationEnvironment}] [Hostname: {Environment.MachineName} | Logging endpoint: {otel_endpoint}] Counter: {++id}"
                     );
                     await Task.Delay(1000);
                 }
