@@ -4,6 +4,7 @@ namespace AuthenticatedOtelLogger
     {
         public const string ArcK8sCertEnvVarName = "ARC_K8S_CLIENT_CERT_SECRET";
         public const string ArcK8sClientIdEnvVarName = "ARC_K8S_CLIENT_ID";
+        public const string ArcContainerResourceId = "ARC_CONTAINER_RESOURCE_ID";
         public const string ArcDataOpenTelemetryClientIdEnvVarName = "ARCDATA_OTEL_CLIENT_ID";
         public const string AuthorizationEnvironmentEnvVarName = "AUTHORIZATION_ENV";
         public const string ClientIdEnvVarName = "CLIENT_ID";

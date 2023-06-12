@@ -5,9 +5,18 @@ namespace AuthenticatedOtelLogger
 {
     public class AuthorizationHeaderHandler : DelegatingHandler
     {
+        public enum TokenType
+        {
+            BearerTelemetry,
+            BearerGraph
+        }
+
         private readonly AuthorizationEnvironmentOptions _options;
-        private AuthenticationResult? _authenticationResult;
+        private AuthenticationResult? _bearerTelemetryAuthenticationResult;
+        private AuthenticationResult? _bearerGraphAuthenticationResult;
         private static readonly TimeSpan MinimumValidityPeriod = TimeSpan.FromMinutes(2);
+        public const string GraphHeader = "X-MS-AUTHORIZATION-GRAPH";
+        public const string ContainerResourceIdHeader = "X-MS-ARC-CONTAINER-RESOURCE-ID";
 
         public AuthorizationHeaderHandler(
             HttpMessageHandler innerHandler,
@@ -17,21 +26,8 @@ namespace AuthenticatedOtelLogger
             : base(innerHandler)
         {
             _options = options;
-            _authenticationResult = null;
-        }
-
-        protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request,
-            System.Threading.CancellationToken cancellationToken
-        )
-        {
-            if (request == null)
-                throw new ArgumentNullException(nameof(request));
-            request.Headers.Authorization = new AuthenticationHeaderValue(
-                "Bearer",
-                GetAccessToken()
-            );
-            return base.SendAsync(request, cancellationToken);
+            _bearerTelemetryAuthenticationResult = null;
+            _bearerGraphAuthenticationResult = null;
         }
 
         protected override HttpResponseMessage Send(
@@ -41,59 +37,124 @@ namespace AuthenticatedOtelLogger
         {
             if (request == null)
                 throw new ArgumentNullException(nameof(request));
+
+            // AuthN
+            //
             request.Headers.Authorization = new AuthenticationHeaderValue(
                 "Bearer",
-                GetAccessToken()
+                GetAccessToken(TokenType.BearerTelemetry)
             );
+
+            // AuthZ
+            //
+            request.Headers.Add(GraphHeader, $"Bearer {GetAccessToken(TokenType.BearerGraph)}");
+
+            string arcContainerResourceId =
+                Environment.GetEnvironmentVariable(RuntimeEnvVars.ArcContainerResourceId)
+                ?? "NoAuthZDemo";
+            request.Headers.Add(ContainerResourceIdHeader, arcContainerResourceId);
+
             return base.Send(request, cancellationToken);
         }
 
-        private string? GetAccessToken()
+        private string? GetAccessToken(TokenType tokenType)
         {
+            // Determine scopes
+            //
+            string scope;
+            switch (tokenType)
+            {
+                case TokenType.BearerTelemetry:
+
+                    var arcDataOpenTelemetryClientId = Environment.GetEnvironmentVariable(
+                        RuntimeEnvVars.ArcDataOpenTelemetryClientIdEnvVarName
+                    );
+                    if (arcDataOpenTelemetryClientId == null)
+                        throw new ArgumentNullException(
+                            $"Environment variable {RuntimeEnvVars.ArcDataOpenTelemetryClientIdEnvVarName} is null."
+                        );
+
+                    scope = arcDataOpenTelemetryClientId;
+
+                    break;
+
+                case TokenType.BearerGraph:
+
+                    scope = "https://graph.microsoft.com";
+
+                    break;
+
+                default:
+
+                    throw new ArgumentOutOfRangeException(nameof(tokenType), tokenType, null);
+            }
+
+            // Set authentication result
+            //
+            var authenticationResult = tokenType switch
+            {
+                TokenType.BearerTelemetry => _bearerTelemetryAuthenticationResult,
+                TokenType.BearerGraph => _bearerGraphAuthenticationResult,
+                _ => throw new ArgumentOutOfRangeException(nameof(tokenType), tokenType, null)
+            };
+
             bool tokenExpiredOrAboutToExpire;
-            if (_authenticationResult != null)
+            if (authenticationResult != null)
             {
                 tokenExpiredOrAboutToExpire =
-                    _authenticationResult?.ExpiresOn
-                    < DateTimeOffset.UtcNow + MinimumValidityPeriod;
+                    authenticationResult?.ExpiresOn < DateTimeOffset.UtcNow + MinimumValidityPeriod;
             }
             else
             {
                 tokenExpiredOrAboutToExpire = true;
             }
 
-            Console.WriteLine("================================================");
+            Console.WriteLine(
+                "=========================================================================================================="
+            );
             if (tokenExpiredOrAboutToExpire)
             {
-                Console.WriteLine("Refreshing Azure AD token...");
-                _authenticationResult = GetAuthenticationResultAsync(_options).Result;
+                Console.WriteLine($"[Scope: {scope}] Refreshing Scoped Azure AD token");
+                authenticationResult = GetAuthenticationResultAsync(_options, scope).Result;
             }
-            if (_authenticationResult == null)
+            if (authenticationResult == null)
             {
-                Console.WriteLine("Running in NoAuth mode.");
-                Console.WriteLine("================================================");
-                return "NoAuth";
+                Console.WriteLine("Running in NoAuth mode, returning bogus token.");
+                Console.WriteLine(
+                    "=========================================================================================================="
+                );
+                return "NoAuthNDemo";
             }
+
             Console.WriteLine(
-                $"Token expires in [HH:MM:SS] {_authenticationResult?.ExpiresOn - DateTimeOffset.UtcNow}."
+                $"[Scope: {scope}] Token expires in [HH:MM:SS] {authenticationResult?.ExpiresOn - DateTimeOffset.UtcNow}."
             );
-            Console.WriteLine("================================================");
-            return _authenticationResult?.AccessToken;
+            Console.WriteLine(
+                "=========================================================================================================="
+            );
+
+            // Update cache
+            //
+            switch (tokenType)
+            {
+                case TokenType.BearerTelemetry:
+                    _bearerTelemetryAuthenticationResult = authenticationResult;
+                    break;
+                case TokenType.BearerGraph:
+                    _bearerGraphAuthenticationResult = authenticationResult;
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(tokenType), tokenType, null);
+            }
+
+            return authenticationResult?.AccessToken;
         }
 
         private static async Task<AuthenticationResult> GetAuthenticationResultAsync(
-            AuthorizationEnvironmentOptions options
+            AuthorizationEnvironmentOptions options,
+            string scope
         )
         {
-            var arcDataOpenTelemetryClientId = Environment.GetEnvironmentVariable(
-                RuntimeEnvVars.ArcDataOpenTelemetryClientIdEnvVarName
-            );
-
-            if (arcDataOpenTelemetryClientId == null)
-                throw new ArgumentNullException(
-                    $"Environment variable {RuntimeEnvVars.ArcDataOpenTelemetryClientIdEnvVarName} is null."
-                );
-
             var clientId = Environment.GetEnvironmentVariable(RuntimeEnvVars.ClientIdEnvVarName);
             var clientSecret = Environment.GetEnvironmentVariable(
                 RuntimeEnvVars.ClientSecretEnvVarName
@@ -105,7 +166,6 @@ namespace AuthenticatedOtelLogger
 
             IConfidentialClientApplication confidentialClientApplication;
             IManagedIdentityApplication managedIdApplication;
-            string scope = arcDataOpenTelemetryClientId;
             AuthenticationResult authenticationResult;
 
             switch (options)
@@ -209,11 +269,6 @@ namespace AuthenticatedOtelLogger
             }
 
             return authenticationResult;
-        }
-
-        private string GetTokenExpirationTimeFormatted()
-        {
-            return $"Token expires in [HH:MM:SS] {_authenticationResult?.ExpiresOn - DateTimeOffset.UtcNow}.";
         }
     }
 }
