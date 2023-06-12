@@ -90,11 +90,8 @@ namespace AuthZProcessor
             string? oid = otlpJsonPayload?.GetScopeLogsAttributeIfExists(
                 RuntimeConstants.AuthorObjectIdAttributeKey
             );
-            string? bearerGraph = otlpJsonPayload?.GetScopeLogsAttributeIfExists(
-                RuntimeConstants.AuthorGraphBearerTokenAttributeKey
-            );
-            string? claimedContainerResourceId = otlpJsonPayload?.GetScopeLogsAttributeIfExists(
-                RuntimeConstants.AuthorClaimedContainerResourceId
+            string? claims = otlpJsonPayload?.GetScopeLogsAttributeIfExists(
+                RuntimeConstants.AuthorClaimsProvenJwt
             );
 
             // AuthZ is not possible without all of these attributes
@@ -102,8 +99,7 @@ namespace AuthZProcessor
             if (
                 appid == null
                 || oid == null
-                || bearerGraph == null
-                || claimedContainerResourceId == null
+                || claims == null
             )
             {
                 return Task.CompletedTask;
@@ -111,7 +107,7 @@ namespace AuthZProcessor
 
             Console.WriteLine($"\tReceived valid event: {otlpJsonPayload?.ToString()}");
 
-            // TODO: Do the AuthZ
+            // TODO: Check Claims after parsing JWT
 
             // TODO: Write to AuthZ Event Hub
 

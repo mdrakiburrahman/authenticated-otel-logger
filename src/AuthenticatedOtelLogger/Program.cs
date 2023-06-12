@@ -101,7 +101,7 @@ namespace AuthenticatedOtelLogger
                     logger.LogInformation(
                         $"[Flavor: {demo_flavor} | Tenant: {tenant_id} | Authorization: {authorizationEnvironment} | Unproven ContainerResourceId: {container_resource_id} | Hostname: {Environment.MachineName} | Logging endpoint: {otel_endpoint}] Counter: {++id}"
                     );
-                    await Task.Delay(1000);
+                    await Task.Delay(30000);
                 }
             }
         }

@@ -7,16 +7,13 @@ namespace AuthenticatedOtelLogger
     {
         public enum TokenType
         {
-            BearerTelemetry,
-            BearerGraph
+            BearerTelemetry
         }
 
         private readonly AuthorizationEnvironmentOptions _options;
         private AuthenticationResult? _bearerTelemetryAuthenticationResult;
         private AuthenticationResult? _bearerGraphAuthenticationResult;
         private static readonly TimeSpan MinimumValidityPeriod = TimeSpan.FromMinutes(2);
-        public const string GraphHeader = "X-MS-AUTHORIZATION-GRAPH";
-        public const string ContainerResourceIdHeader = "X-MS-ARC-CONTAINER-RESOURCE-ID";
 
         public AuthorizationHeaderHandler(
             HttpMessageHandler innerHandler,
@@ -38,21 +35,10 @@ namespace AuthenticatedOtelLogger
             if (request == null)
                 throw new ArgumentNullException(nameof(request));
 
-            // AuthN
-            //
             request.Headers.Authorization = new AuthenticationHeaderValue(
                 "Bearer",
                 GetAccessToken(TokenType.BearerTelemetry)
             );
-
-            // AuthZ
-            //
-            request.Headers.Add(GraphHeader, $"Bearer {GetAccessToken(TokenType.BearerGraph)}");
-
-            string arcContainerResourceId =
-                Environment.GetEnvironmentVariable(RuntimeEnvVars.ArcContainerResourceId)
-                ?? "NoAuthZDemo";
-            request.Headers.Add(ContainerResourceIdHeader, arcContainerResourceId);
 
             return base.Send(request, cancellationToken);
         }
@@ -78,12 +64,6 @@ namespace AuthenticatedOtelLogger
 
                     break;
 
-                case TokenType.BearerGraph:
-
-                    scope = "https://graph.microsoft.com";
-
-                    break;
-
                 default:
 
                     throw new ArgumentOutOfRangeException(nameof(tokenType), tokenType, null);
@@ -94,7 +74,6 @@ namespace AuthenticatedOtelLogger
             var authenticationResult = tokenType switch
             {
                 TokenType.BearerTelemetry => _bearerTelemetryAuthenticationResult,
-                TokenType.BearerGraph => _bearerGraphAuthenticationResult,
                 _ => throw new ArgumentOutOfRangeException(nameof(tokenType), tokenType, null)
             };
 
@@ -140,9 +119,7 @@ namespace AuthenticatedOtelLogger
                 case TokenType.BearerTelemetry:
                     _bearerTelemetryAuthenticationResult = authenticationResult;
                     break;
-                case TokenType.BearerGraph:
-                    _bearerGraphAuthenticationResult = authenticationResult;
-                    break;
+
                 default:
                     throw new ArgumentOutOfRangeException(nameof(tokenType), tokenType, null);
             }
