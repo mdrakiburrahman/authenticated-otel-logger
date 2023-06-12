@@ -12,6 +12,15 @@ namespace AuthZProcessor
         {
             return JsonSerializer.Serialize(this);
         }
+
+        public string? GetScopeLogsAttributeIfExists(string key)
+        {
+            return ResourceLogs
+                .SelectMany(resourceLog => resourceLog.ScopeLogs)
+                .SelectMany(scopeLog => scopeLog.LogRecords)
+                .SelectMany(logRecord => logRecord.Attributes)
+                .FirstOrDefault(attribute => attribute.Key == key)?.Value.StringValue;
+        }
     }
 
     public class ResourceLog

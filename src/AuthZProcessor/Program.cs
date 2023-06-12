@@ -16,6 +16,15 @@ namespace AuthZProcessor
 
         static async Task Main(string[] args)
         {
+            // Create a cancellation token source to handle termination signals
+            //
+            var cts = new CancellationTokenSource();
+            Console.CancelKeyPress += (sender, eventArgs) =>
+            {
+                eventArgs.Cancel = true; // Cancel the default termination behavior
+                cts.Cancel(); // Cancel the ongoing operation
+            };
+
             // Create a blob container client that the event processor will use
             //
             BlobContainerClient storageClient = new BlobContainerClient(
@@ -48,17 +57,20 @@ namespace AuthZProcessor
             // Start the processing
             //
             Console.WriteLine(
-                $"Starting the processor, there are currently {GetNumEvents(_consumerClient).Result} events in the queue"
+                $"Starting the processor, there are currently {GetNumEvents(_consumerClient).Result} events in the queue."
             );
             await _processorClient.StartProcessingAsync();
 
-            // Wait for 30 seconds for the events to be processed
+            // Wait for cancellation signal
             //
-            await Task.Delay(TimeSpan.FromSeconds(30));
+            Console.WriteLine("Processor started. Press Ctrl+C to stop.");
+            await WaitForCancellationSignalAsync(cts.Token);
 
             // Stop the processing
             //
-            Console.WriteLine("Stopping the processor");
+            Console.WriteLine(
+                $"Stopping the processor, there are currently {GetNumEvents(_consumerClient).Result} events in the queue."
+            );
             await _processorClient.StopProcessingAsync();
 
             Console.WriteLine("Done.");
@@ -69,12 +81,39 @@ namespace AuthZProcessor
             Console.WriteLine($"Processing Sequence: {eventArgs.Data.SequenceNumber}");
 
             string payload = Encoding.UTF8.GetString(eventArgs.Data.Body.ToArray());
-            if (string.IsNullOrEmpty(payload))
-                return Task.CompletedTask;
 
             OtlpJsonPayload? otlpJsonPayload = JsonSerializer.Deserialize<OtlpJsonPayload>(payload);
 
-            Console.WriteLine($"\tReceived event: {otlpJsonPayload?.ToString()}");
+            string? appid = otlpJsonPayload?.GetScopeLogsAttributeIfExists(
+                RuntimeConstants.AuthorAppIdAttributeKey
+            );
+            string? oid = otlpJsonPayload?.GetScopeLogsAttributeIfExists(
+                RuntimeConstants.AuthorObjectIdAttributeKey
+            );
+            string? bearerGraph = otlpJsonPayload?.GetScopeLogsAttributeIfExists(
+                RuntimeConstants.AuthorGraphBearerTokenAttributeKey
+            );
+            string? claimedContainerResourceId = otlpJsonPayload?.GetScopeLogsAttributeIfExists(
+                RuntimeConstants.AuthorClaimedContainerResourceId
+            );
+
+            // AuthZ is not possible without all of these attributes
+            //
+            if (
+                appid == null
+                || oid == null
+                || bearerGraph == null
+                || claimedContainerResourceId == null
+            )
+            {
+                return Task.CompletedTask;
+            }
+
+            Console.WriteLine($"\tReceived valid event: {otlpJsonPayload?.ToString()}");
+
+            // TODO: Do the AuthZ
+
+            // TODO: Write to AuthZ Event Hub
 
             return Task.CompletedTask;
         }
@@ -92,6 +131,13 @@ namespace AuthZProcessor
         {
             var partitionProperties = await consumerClient.GetPartitionPropertiesAsync("0");
             return partitionProperties.LastEnqueuedSequenceNumber;
+        }
+
+        static async Task WaitForCancellationSignalAsync(CancellationToken cancellationToken)
+        {
+            // Wait indefinitely or until cancellation signal
+            //
+            await Task.Delay(-1, cancellationToken);
         }
     }
 }
