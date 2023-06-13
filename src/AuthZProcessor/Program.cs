@@ -6,6 +6,8 @@ using System;
 using System.Text;
 using System.Threading.Tasks;
 using System.Text.Json;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace AuthZProcessor
 {
@@ -82,7 +84,8 @@ namespace AuthZProcessor
 
             string payload = Encoding.UTF8.GetString(eventArgs.Data.Body.ToArray());
 
-            OtlpJsonPayload? otlpJsonPayload = JsonSerializer.Deserialize<OtlpJsonPayload>(payload);
+            OtlpJsonPayload? otlpJsonPayload =
+                System.Text.Json.JsonSerializer.Deserialize<OtlpJsonPayload>(payload);
 
             string? appid = otlpJsonPayload?.GetScopeLogsAttributeIfExists(
                 RuntimeConstants.AuthorAppIdAttributeKey
@@ -96,18 +99,30 @@ namespace AuthZProcessor
 
             // AuthZ is not possible without all of these attributes
             //
-            if (
-                appid == null
-                || oid == null
-                || claims == null
-            )
+            if (appid == null || oid == null || claims == null)
             {
                 return Task.CompletedTask;
             }
 
-            Console.WriteLine($"\tReceived valid event: {otlpJsonPayload?.ToString()}");
+            // Get ContainerResourceId
+            //
+            var decodedClaims = Encoding.UTF8.GetString(Convert.FromBase64String(claims));
+            JObject jsonObject = JObject.Parse(decodedClaims);
+            JArray claimsArray = (JArray)jsonObject["claims"];
+            string? containerResourceId = null;
 
-            // TODO: Check Claims after parsing JWT
+            containerResourceId = claimsArray
+                .FirstOrDefault(
+                    claim => (string)claim["typ"] == RuntimeConstants.ContainerResourceIdJwtKey
+                )
+                ?.Value<string>("val");
+
+            if (containerResourceId == null)
+                return Task.CompletedTask;
+
+            Console.WriteLine(
+                $"Valid claim: App Id: {appid}, Object Id: {oid}, Managed Id: {containerResourceId}"
+            );
 
             // TODO: Write to AuthZ Event Hub
 
