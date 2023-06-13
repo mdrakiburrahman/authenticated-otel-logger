@@ -19,9 +19,6 @@ namespace AuthenticatedOtelLogger
 
             string tenant_id = Environment.GetEnvironmentVariable(RuntimeEnvVars.TenantIdEnvVarName)
                 ?? "unknown";
-            
-            string container_resource_id = Environment.GetEnvironmentVariable(RuntimeEnvVars.ArcContainerResourceId)
-                ?? "unknown";
 
             AuthorizationEnvironmentOptions authorizationEnvironment;
             if (
@@ -99,7 +96,7 @@ namespace AuthenticatedOtelLogger
                 while (true)
                 {
                     logger.LogInformation(
-                        $"[Flavor: {demo_flavor} | Tenant: {tenant_id} | Authorization: {authorizationEnvironment} | Unproven ContainerResourceId: {container_resource_id} | Hostname: {Environment.MachineName} | Logging endpoint: {otel_endpoint}] Counter: {++id}"
+                        $"[Flavor: {demo_flavor} | Tenant: {tenant_id} | Authorization: {authorizationEnvironment} | Hostname: {Environment.MachineName} | Logging endpoint: {otel_endpoint}] Counter: {++id}"
                     );
                     await Task.Delay(30000);
                 }

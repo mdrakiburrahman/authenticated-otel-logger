@@ -1,21 +1,19 @@
 ﻿using Azure.Messaging.EventHubs;
 using Azure.Messaging.EventHubs.Consumer;
 using Azure.Messaging.EventHubs.Processor;
+using Azure.Messaging.EventHubs.Producer;
 using Azure.Storage.Blobs;
-using System;
-using System.Text;
-using System.Threading.Tasks;
-using System.Text.Json;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using System;
+using System.Text;
+using System.Text.Json;
+using System.Threading.Tasks;
 
 namespace AuthZProcessor
 {
     public class Program
     {
-        private EventProcessorClient? _processorClient;
-        private EventHubConsumerClient? _consumerClient;
-
         static async Task Main(string[] args)
         {
             // Create a cancellation token source to handle termination signals
@@ -34,34 +32,50 @@ namespace AuthZProcessor
                 Environment.GetEnvironmentVariable(RuntimeEnvVars.StorageContainerName)
             );
 
-            // Initiate Processor Client
+            // Initiate Processor Client - AuthN
             //
-            var _processorClient = new EventProcessorClient(
+            var processorClient = new EventProcessorClient(
                 storageClient,
                 EventHubConsumerClient.DefaultConsumerGroupName,
-                Environment.GetEnvironmentVariable(RuntimeEnvVars.AuthNEventHubConnectionString),
+                Environment.GetEnvironmentVariable(
+                    RuntimeEnvVars.EventHubNamespaceConnectionString
+                ),
                 Environment.GetEnvironmentVariable(RuntimeEnvVars.AuthNEventHubName)
             );
 
-            // Initiate Consumer Client
+            // Initiate Consumer Client - AuthN
             //
-            var _consumerClient = new EventHubConsumerClient(
+            var consumerClient = new EventHubConsumerClient(
                 EventHubConsumerClient.DefaultConsumerGroupName,
-                Environment.GetEnvironmentVariable(RuntimeEnvVars.AuthNEventHubConnectionString),
+                Environment.GetEnvironmentVariable(
+                    RuntimeEnvVars.EventHubNamespaceConnectionString
+                ),
                 Environment.GetEnvironmentVariable(RuntimeEnvVars.AuthNEventHubName)
+            );
+
+            // Initiate Producer Client - AuthZ
+            //
+            var producerClient = new EventHubProducerClient(
+                Environment.GetEnvironmentVariable(
+                    RuntimeEnvVars.EventHubNamespaceConnectionString
+                ),
+                Environment.GetEnvironmentVariable(RuntimeEnvVars.AuthZEventHubName)
             );
 
             // Register handlers for processing events and handling errors
             //
-            _processorClient.ProcessEventAsync += ProcessEventHandler;
-            _processorClient.ProcessErrorAsync += ProcessErrorHandler;
+            processorClient.ProcessEventAsync += async (eventArgs) =>
+            {
+                await ProcessEventHandler(eventArgs, producerClient);
+            };
+            processorClient.ProcessErrorAsync += ProcessErrorHandler;
 
             // Start the processing
             //
             Console.WriteLine(
-                $"Starting the processor, there are currently {GetNumEvents(_consumerClient).Result} events in the queue."
+                $"Starting the processor, there are currently {GetNumEvents(consumerClient).Result} events in the queue."
             );
-            await _processorClient.StartProcessingAsync();
+            await processorClient.StartProcessingAsync();
 
             // Wait for cancellation signal
             //
@@ -71,14 +85,22 @@ namespace AuthZProcessor
             // Stop the processing
             //
             Console.WriteLine(
-                $"Stopping the processor, there are currently {GetNumEvents(_consumerClient).Result} events in the queue."
+                $"Stopping the processor, there are currently {GetNumEvents(consumerClient).Result} events in the queue."
             );
-            await _processorClient.StopProcessingAsync();
+            await processorClient.StopProcessingAsync();
+
+            // Close the clients
+            //
+            await consumerClient.CloseAsync();
+            await producerClient.CloseAsync();
 
             Console.WriteLine("Done.");
         }
 
-        static Task ProcessEventHandler(ProcessEventArgs eventArgs)
+        static async Task<Task> ProcessEventHandler(
+            ProcessEventArgs eventArgs,
+            EventHubProducerClient producerClient
+        )
         {
             Console.WriteLine($"Processing Sequence: {eventArgs.Data.SequenceNumber}");
 
@@ -124,7 +146,10 @@ namespace AuthZProcessor
                 $"Valid claim: App Id: {appid}, Object Id: {oid}, Managed Id: {containerResourceId}"
             );
 
-            // TODO: Write to AuthZ Event Hub
+            // Write payload to AuthZ Event Hub
+            //
+            var eventData = new EventData(Encoding.UTF8.GetBytes(payload));
+            await producerClient.SendAsync(new List<EventData> { eventData });
 
             return Task.CompletedTask;
         }
