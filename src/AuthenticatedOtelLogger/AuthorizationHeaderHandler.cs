@@ -18,7 +18,7 @@ namespace AuthenticatedOtelLogger
             HttpMessageHandler innerHandler,
             AuthorizationEnvironmentOptions options = AuthorizationEnvironmentOptions.ServicePrincipal
         )
-            : base(GetHandlerWithoutSslValidation(innerHandler, true))
+            : base(GetHandlerWithoutSslValidation(innerHandler, false))
         {
             _options = options;
             _bearerTelemetryAuthenticationResult = null;
