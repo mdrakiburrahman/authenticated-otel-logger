@@ -62,7 +62,6 @@ namespace AuthenticatedOtelLogger
                 // >>> e.g. http://127.0.0.1:8080/v1/logs
                 //
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", GetAccessToken(TokenType.BearerTelemetry));
-                request.Headers.Add("x-ms-telemetry-kind", "d4db");
                 request.Headers.Add("Original-Uri", request?.RequestUri?.ToString());
                 request.Headers.Add("Original-Method", request.Method.ToString());
                 request.Headers.Add("X-Forwarded-For", "99.238.40.160");
