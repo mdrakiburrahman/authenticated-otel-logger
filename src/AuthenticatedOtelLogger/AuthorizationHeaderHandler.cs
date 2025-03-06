@@ -12,19 +12,35 @@ namespace AuthenticatedOtelLogger
 
         private readonly AuthorizationEnvironmentOptions _options;
         private AuthenticationResult? _bearerTelemetryAuthenticationResult;
-        private AuthenticationResult? _bearerGraphAuthenticationResult;
         private static readonly TimeSpan MinimumValidityPeriod = TimeSpan.FromMinutes(2);
 
         public AuthorizationHeaderHandler(
             HttpMessageHandler innerHandler,
-            AuthorizationEnvironmentOptions options =
-                AuthorizationEnvironmentOptions.ServicePrincipal
+            AuthorizationEnvironmentOptions options = AuthorizationEnvironmentOptions.ServicePrincipal
         )
-            : base(innerHandler)
+            : base(GetHandlerWithoutSslValidation(innerHandler, true))
         {
             _options = options;
             _bearerTelemetryAuthenticationResult = null;
-            _bearerGraphAuthenticationResult = null;
+        }
+
+        private static HttpMessageHandler GetHandlerWithoutSslValidation(HttpMessageHandler handler, bool disableSslCheck)
+        {
+            if (!disableSslCheck) return handler;
+
+            if (handler is HttpClientHandler clientHandler)
+            {
+                // Disable SSL certificate validation
+                clientHandler.ServerCertificateCustomValidationCallback = (sender, cert, chain, sslPolicyErrors) => true;
+                return clientHandler;
+            }
+
+            // If the innerHandler isn't HttpClientHandler and you still want to disable SSL validation,
+            // create a new one with SSL validation disabled
+            return new HttpClientHandler
+            {
+                ServerCertificateCustomValidationCallback = (sender, cert, chain, sslPolicyErrors) => true
+            };
         }
 
         protected override HttpResponseMessage Send(
@@ -35,12 +51,29 @@ namespace AuthenticatedOtelLogger
             if (request == null)
                 throw new ArgumentNullException(nameof(request));
 
-            request.Headers.Authorization = new AuthenticationHeaderValue(
-                "Bearer",
-                GetAccessToken(TokenType.BearerTelemetry)
-            );
-
-            return base.Send(request, cancellationToken);
+            try
+            {
+                // For local proxying, run:
+                //
+                // >>> kubectl port-forward service/opentelemetry-collector-...-svc-internal -n "...-telemetry" 8080:8080
+                //
+                // Based on what your OTEL URL is, e.g. https://github.com/open-telemetry/opentelemetry-collector/blob/97be125dcc46f303975fc8fda558db80bbd94d20/receiver/otlpreceiver/testdata/config.yaml#L48
+                //
+                // >>> e.g. http://127.0.0.1:8080/v1/logs
+                //
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", GetAccessToken(TokenType.BearerTelemetry));
+                request.Headers.Add("x-ms-telemetry-kind", "d4db");
+                request.Headers.Add("Original-Uri", request?.RequestUri?.ToString());
+                request.Headers.Add("Original-Method", request.Method.ToString());
+                request.Headers.Add("X-Forwarded-For", "99.238.40.160");
+                
+                return base.Send(request, default);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Exception occurred: {ex.Message}");
+                throw;
+            }
         }
 
         private string? GetAccessToken(TokenType tokenType)
@@ -52,16 +85,9 @@ namespace AuthenticatedOtelLogger
             {
                 case TokenType.BearerTelemetry:
 
-                    var arcDataOpenTelemetryClientId = Environment.GetEnvironmentVariable(
-                        RuntimeEnvVars.ArcDataOpenTelemetryClientIdEnvVarName
-                    );
-                    if (arcDataOpenTelemetryClientId == null)
-                        throw new ArgumentNullException(
-                            $"Environment variable {RuntimeEnvVars.ArcDataOpenTelemetryClientIdEnvVarName} is null."
-                        );
-
+                    var arcDataOpenTelemetryClientId = Environment.GetEnvironmentVariable(RuntimeEnvVars.ArcDataOpenTelemetryClientIdEnvVarName);
+                    if (arcDataOpenTelemetryClientId == null) throw new ArgumentNullException($"Environment variable {RuntimeEnvVars.ArcDataOpenTelemetryClientIdEnvVarName} is null.");
                     scope = arcDataOpenTelemetryClientId;
-
                     break;
 
                 default:
@@ -80,17 +106,14 @@ namespace AuthenticatedOtelLogger
             bool tokenExpiredOrAboutToExpire;
             if (authenticationResult != null)
             {
-                tokenExpiredOrAboutToExpire =
-                    authenticationResult?.ExpiresOn < DateTimeOffset.UtcNow + MinimumValidityPeriod;
+                tokenExpiredOrAboutToExpire = authenticationResult?.ExpiresOn < DateTimeOffset.UtcNow + MinimumValidityPeriod;
             }
             else
             {
                 tokenExpiredOrAboutToExpire = true;
             }
 
-            Console.WriteLine(
-                "=========================================================================================================="
-            );
+            Console.WriteLine("==========================================================================================================");
             if (tokenExpiredOrAboutToExpire)
             {
                 Console.WriteLine($"[Scope: {scope}] Refreshing Scoped Azure AD token");
@@ -99,25 +122,17 @@ namespace AuthenticatedOtelLogger
             if (authenticationResult == null)
             {
                 Console.WriteLine("Running in NoAuth mode, returning bogus token.");
-                Console.WriteLine(
-                    "=========================================================================================================="
-                );
+                Console.WriteLine("==========================================================================================================");
                 return "NoAuthNDemo";
             }
 
-            Console.WriteLine(
-                $"[Scope: {scope}] Token expires in [HH:MM:SS] {authenticationResult?.ExpiresOn - DateTimeOffset.UtcNow}."
-            );
-            Console.WriteLine(
-                "=========================================================================================================="
-            );
+            Console.WriteLine("==========================================================================================================");
 
             // Update cache
             //
             switch (tokenType)
             {
-                case TokenType.BearerTelemetry:
-                    _bearerTelemetryAuthenticationResult = authenticationResult;
+                case TokenType.BearerTelemetry:_bearerTelemetryAuthenticationResult = authenticationResult;
                     break;
 
                 default:
@@ -133,13 +148,9 @@ namespace AuthenticatedOtelLogger
         )
         {
             var clientId = Environment.GetEnvironmentVariable(RuntimeEnvVars.ClientIdEnvVarName);
-            var clientSecret = Environment.GetEnvironmentVariable(
-                RuntimeEnvVars.ClientSecretEnvVarName
-            );
+            var clientSecret = Environment.GetEnvironmentVariable(RuntimeEnvVars.ClientSecretEnvVarName);
             var tenantId = Environment.GetEnvironmentVariable(RuntimeEnvVars.TenantIdEnvVarName);
-            var uamiClientId = Environment.GetEnvironmentVariable(
-                RuntimeEnvVars.UamiClientIdEnvVarName
-            );
+            var uamiClientId = Environment.GetEnvironmentVariable(RuntimeEnvVars.UamiClientIdEnvVarName);
 
             IConfidentialClientApplication confidentialClientApplication;
             IManagedIdentityApplication managedIdApplication;
@@ -150,9 +161,7 @@ namespace AuthenticatedOtelLogger
                 case AuthorizationEnvironmentOptions.ServicePrincipal:
 
                     if (clientId == null || clientSecret == null || tenantId == null)
-                        throw new ArgumentNullException(
-                            $"Environment variable {RuntimeEnvVars.ClientIdEnvVarName}, {RuntimeEnvVars.ClientSecretEnvVarName}, or {RuntimeEnvVars.TenantIdEnvVarName} is null."
-                        );
+                        throw new ArgumentNullException($"Environment variable {RuntimeEnvVars.ClientIdEnvVarName}, {RuntimeEnvVars.ClientSecretEnvVarName}, or {RuntimeEnvVars.TenantIdEnvVarName} is null.");
 
                     confidentialClientApplication = ConfidentialClientApplicationBuilder
                         .Create(clientId)
@@ -194,9 +203,7 @@ namespace AuthenticatedOtelLogger
                     );
 
                     if (arcK8scertObj == null || arcK8sclientId == null)
-                        throw new ArgumentNullException(
-                            $"Environment variable {RuntimeEnvVars.ArcK8sCertEnvVarName} or {RuntimeEnvVars.ArcK8sClientIdEnvVarName} cannot be null in {AuthorizationEnvironmentOptions.SystemAssignedIdentityWithCertificate}."
-                        );
+                        throw new ArgumentNullException($"Environment variable {RuntimeEnvVars.ArcK8sCertEnvVarName} or {RuntimeEnvVars.ArcK8sClientIdEnvVarName} cannot be null in {AuthorizationEnvironmentOptions.SystemAssignedIdentityWithCertificate}.");
 
                     var (Certificate, _) = CertificateUtility.ExtractCert(arcK8scertObj);
                     // ==================================================================================================
@@ -217,9 +224,7 @@ namespace AuthenticatedOtelLogger
                 case AuthorizationEnvironmentOptions.UserAssignedIdentity:
 
                     if (uamiClientId == null)
-                        throw new ArgumentNullException(
-                            $"Environment variable {RuntimeEnvVars.UamiClientIdEnvVarName} is null."
-                        );
+                        throw new ArgumentNullException($"Environment variable {RuntimeEnvVars.UamiClientIdEnvVarName} is null.");
 
                     managedIdApplication = ManagedIdentityApplicationBuilder
                         .Create(uamiClientId)
@@ -240,9 +245,7 @@ namespace AuthenticatedOtelLogger
                     break;
 
                 default:
-                    throw new ArgumentException(
-                        $"Invalid AuthorizationEnvironmentOptions value {options}"
-                    );
+                    throw new ArgumentException($"Invalid AuthorizationEnvironmentOptions value {options}");
             }
 
             return authenticationResult;

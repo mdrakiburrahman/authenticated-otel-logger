@@ -10,25 +10,11 @@ namespace AuthenticatedOtelLogger
     {
         public static async Task Main(string[] args)
         {
-            string otel_endpoint =
-                Environment.GetEnvironmentVariable(RuntimeEnvVars.OtelFqdnEnvVarName)
-                ?? "http://localhost";
-            
-            string demo_flavor = Environment.GetEnvironmentVariable(RuntimeEnvVars.DemoFlavor)
-                ?? "unknown";
-
-            string tenant_id = Environment.GetEnvironmentVariable(RuntimeEnvVars.TenantIdEnvVarName)
-                ?? "unknown";
+            string otel_endpoint = Environment.GetEnvironmentVariable(RuntimeEnvVars.OtelFqdnEnvVarName) ?? "http://localhost";
+            string tenant_id = Environment.GetEnvironmentVariable(RuntimeEnvVars.TenantIdEnvVarName) ?? "unknown";
 
             AuthorizationEnvironmentOptions authorizationEnvironment;
-            if (
-                !Enum.TryParse(
-                    Environment.GetEnvironmentVariable(
-                        RuntimeEnvVars.AuthorizationEnvironmentEnvVarName
-                    ),
-                    out authorizationEnvironment
-                )
-            )
+            if (!Enum.TryParse(Environment.GetEnvironmentVariable(RuntimeEnvVars.AuthorizationEnvironmentEnvVarName), out authorizationEnvironment))
             {
                 authorizationEnvironment = AuthorizationEnvironmentOptions.ServicePrincipal;
             }
@@ -65,15 +51,8 @@ namespace AuthenticatedOtelLogger
                             otlpOptions.HttpClientFactory = () =>
                             {
                                 var innerHandler = new HttpClientHandler();
-                                var client = new HttpClient(
-                                    new AuthorizationHeaderHandler(
-                                        innerHandler,
-                                        authorizationEnvironment
-                                    )
-                                );
-                                client.Timeout = TimeSpan.FromMilliseconds(
-                                    otlpOptions.TimeoutMilliseconds
-                                );
+                                var client = new HttpClient(new AuthorizationHeaderHandler(innerHandler,authorizationEnvironment));
+                                client.Timeout = TimeSpan.FromMilliseconds(otlpOptions.TimeoutMilliseconds);
                                 return client;
                             };
                         }
@@ -83,22 +62,13 @@ namespace AuthenticatedOtelLogger
             });
 
             var logger = loggerFactory.CreateLogger<Program>();
-            using (
-                logger.BeginScope(
-                    new List<KeyValuePair<string, object>>
-                    {
-                        new KeyValuePair<string, object>("scope_name", "parent"),
-                    }
-                )
-            )
+            using (logger.BeginScope(new List<KeyValuePair<string, object>> { new KeyValuePair<string, object>("scope_name", "parent") }))
             {
                 int id = 0;
                 while (true)
                 {
-                    logger.LogInformation(
-                        $"[Flavor: {demo_flavor} | Tenant: {tenant_id} | Authorization: {authorizationEnvironment} | Hostname: {Environment.MachineName} | Logging endpoint: {otel_endpoint}] Counter: {++id}"
-                    );
-                    await Task.Delay(30000);
+                    logger.LogInformation($"[Authorization: {authorizationEnvironment} | Tenant: {tenant_id} | Hostname: {Environment.MachineName} | Logging endpoint: {otel_endpoint}] Counter: {++id}");
+                    await Task.Delay(1000);
                 }
             }
         }
