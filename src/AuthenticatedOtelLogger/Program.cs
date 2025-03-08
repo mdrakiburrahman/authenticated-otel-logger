@@ -61,13 +61,17 @@ namespace AuthenticatedOtelLogger
                 });
             });
 
+            var arcDataOpenTelemetryClientId = Environment.GetEnvironmentVariable(RuntimeEnvVars.ArcDataOpenTelemetryClientIdEnvVarName);
+            if (arcDataOpenTelemetryClientId == null) throw new ArgumentNullException($"Environment variable {RuntimeEnvVars.ArcDataOpenTelemetryClientIdEnvVarName} is null.");
+            var scope = $"{arcDataOpenTelemetryClientId}/.default";
+
             var logger = loggerFactory.CreateLogger<Program>();
             using (logger.BeginScope(new List<KeyValuePair<string, object>> { new KeyValuePair<string, object>("scope_name", "parent") }))
             {
                 int id = 0;
                 while (true)
                 {
-                    logger.LogInformation($"[Authorization: {authorizationEnvironment} | Tenant: {tenant_id} | Hostname: {Environment.MachineName} | Logging endpoint: {otel_endpoint}] Counter: {++id}");
+                    logger.LogInformation($"[Authorization: {authorizationEnvironment} | Scope: {scope} | Tenant: {tenant_id} | Hostname: {Environment.MachineName} | Logging endpoint: {otel_endpoint}] Counter: {++id}");
                     await Task.Delay(1000);
                 }
             }
